@@ -47,3 +47,9 @@ data/*.json
 # Claude
 .claude/
 tmpclaude-*/
+
+# Project tours
+.tours/
+
+# Build outputs
+*.spec

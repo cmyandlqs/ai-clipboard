@@ -3,20 +3,18 @@ AI Clip - 全局快捷键管理
 """
 
 import keyboard
-import threading
 from typing import Callable, Optional
 
 
 class HotkeyManager:
     """
     全局快捷键管理器
-    使用keyboard库监听全局快捷键
+    使用 keyboard 库监听全局快捷键
     """
 
     def __init__(self):
         self._hotkeys = {}  # {hotkey_str: callback}
-        self._running = False
-        self._thread: Optional[threading.Thread] = None
+        print("[Hotkey] 快捷键管理器已初始化")
 
     def register(self, hotkey: str, callback: Callable):
         """
@@ -26,9 +24,12 @@ class HotkeyManager:
             hotkey: 快捷键字符串，如 "ctrl+shift+space"
             callback: 回调函数
         """
-        self._hotkeys[hotkey] = callback
-        keyboard.add_hotkey(hotkey, callback)
-        print(f"[Hotkey] 已注册快捷键: {hotkey}")
+        try:
+            self._hotkeys[hotkey] = callback
+            keyboard.add_hotkey(hotkey, callback, suppress=False)
+            print(f"[Hotkey] 已注册快捷键: {hotkey}")
+        except Exception as e:
+            print(f"[Hotkey] 注册快捷键失败: {hotkey}, 错误: {e}")
 
     def unregister(self, hotkey: str):
         """
@@ -38,21 +39,29 @@ class HotkeyManager:
             hotkey: 快捷键字符串
         """
         if hotkey in self._hotkeys:
-            keyboard.remove_hotkey(hotkey)
-            del self._hotkeys[hotkey]
-            print(f"[Hotkey] 已取消快捷键: {hotkey}")
+            try:
+                keyboard.remove_hotkey(hotkey)
+                del self._hotkeys[hotkey]
+                print(f"[Hotkey] 已取消快捷键: {hotkey}")
+            except Exception as e:
+                print(f"[Hotkey] 取消快捷键失败: {e}")
 
     def start(self):
-        """启动快捷键监听（阻塞）"""
-        self._running = True
-        keyboard.wait()
+        """启动快捷键监听"""
+        # keyboard 库会自动处理钩子，无需额外操作
+        print("[Hotkey] 快捷键监听已启动")
 
     def stop(self):
         """停止快捷键监听"""
-        self._running = False
-        # 清除所有快捷键
-        for hotkey in list(self._hotkeys.keys()):
-            self.unregister(hotkey)
+        try:
+            # 清除所有快捷键
+            for hotkey in list(self._hotkeys.keys()):
+                self.unregister(hotkey)
+            # 移除所有钩子
+            keyboard.unhook_all()
+            print("[Hotkey] 快捷键监听已停止")
+        except Exception as e:
+            print(f"[Hotkey] 停止快捷键监听失败: {e}")
 
     def is_pressed(self, hotkey: str) -> bool:
         """
