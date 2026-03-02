@@ -3,8 +3,49 @@ AI Clip - 工具函数
 """
 
 import time
+import tkinter as tk
 from datetime import datetime
-from typing import Tuple
+from typing import Tuple, Optional
+
+
+def get_mouse_position() -> Tuple[int, int]:
+    """
+    获取当前鼠标指针位置
+
+    Returns:
+        (x, y) 鼠标坐标
+    """
+    root = tk.Tk()
+    root.withdraw()
+    x = root.winfo_pointerx()
+    y = root.winfo_pointery()
+    root.destroy()
+    return x, y
+
+
+def get_window_near_mouse(window_width: int, window_height: int, offset_x: int = 20, offset_y: int = 20) -> Tuple[int, int]:
+    """
+    计算窗口在鼠标附近的位置
+    
+    Args:
+        window_width: 窗口宽度
+        window_height: 窗口高度
+        offset_x: 鼠标 X 偏移量
+        offset_y: 鼠标 Y 偏移量
+    
+    Returns:
+        (x, y) 窗口左上角坐标
+    """
+    mouse_x, mouse_y = get_mouse_position()
+    
+    # 窗口出现在鼠标右下方
+    x = mouse_x + offset_x
+    y = mouse_y + offset_y
+    
+    # 确保窗口在屏幕内
+    x, y = ensure_window_on_screen(x, y, window_width, window_height)
+    
+    return x, y
 
 
 def format_timestamp(ts: float = None) -> str:
@@ -71,8 +112,8 @@ def ensure_window_on_screen(x: int, y: int, width: int, height: int) -> Tuple[in
     确保窗口坐标在屏幕可见范围内
 
     Args:
-        x: 窗口x坐标
-        y: 窗口y坐标
+        x: 窗口 x 坐标
+        y: 窗口 y 坐标
         width: 窗口宽度
         height: 窗口高度
 
@@ -86,15 +127,20 @@ def ensure_window_on_screen(x: int, y: int, width: int, height: int) -> Tuple[in
     screen_height = root.winfo_screenheight()
     root.destroy()
 
-    # 确保窗口不完全超出屏幕
-    if x + width < 50:
-        x = 50
-    elif x > screen_width - 50:
-        x = screen_width - width - 50
+    # 边距
+    margin = 10
+    taskbar_height = 60  # 预留任务栏高度
 
-    if y + height < 50:
-        y = 50
-    elif y > screen_height - 50:
-        y = screen_height - height - 50
+    # 确保 x 在屏幕范围内
+    if x < margin:
+        x = margin
+    elif x + width > screen_width - margin:
+        x = screen_width - width - margin
+
+    # 确保 y 在屏幕范围内（考虑任务栏）
+    if y < margin:
+        y = margin
+    elif y + height > screen_height - taskbar_height:
+        y = screen_height - height - taskbar_height
 
     return x, y

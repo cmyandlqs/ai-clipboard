@@ -9,8 +9,28 @@ AI Clip - 主程序入口
 - 历史记录管理
 """
 
-import tkinter as tk
 import sys
+import ctypes
+
+# ============================================
+# 启用 Windows 高 DPI 感知（必须在导入 tkinter 之前）
+# ============================================
+if sys.platform == "win32":
+    try:
+        # Windows 10+ 方式
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+    except:
+        try:
+            # Windows 8.1 方式
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)  # PROCESS_SYSTEM_DPI_AWARE
+        except:
+            try:
+                # 更旧的方式
+                ctypes.windll.user32.SetProcessDPIAware()
+            except:
+                pass
+
+import tkinter as tk
 import pyperclip
 
 from config import (
@@ -23,7 +43,7 @@ from config import (
 from core.hotkey import HotkeyManager
 from core.clipboard import ClipboardMonitor
 from core.storage import Storage
-from ui.main_window import MainWindow
+from ui.main_window import ModernWindow
 from ui.history_window import HistoryWindow
 from utils.helpers import get_window_center, ensure_window_on_screen
 
@@ -44,7 +64,7 @@ class AIClipApp:
         self.storage = Storage()
 
         # 初始化窗口（传递root作为master）
-        self.main_window = MainWindow(self.root, on_history_click=self.show_history_window)
+        self.main_window = ModernWindow(self.root, on_history_click=self.show_history_window)
         self.history_window = None
 
         # 初始化剪贴板监控

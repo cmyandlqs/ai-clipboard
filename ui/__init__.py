@@ -1,8 +1,8 @@
 """
-AI Clip - UI模块
+AI Clip - UI 模块
 """
 
-from .main_window import MainWindow
+from .main_window import ModernWindow
 from .history_window import HistoryWindow
 
-__all__ = ["MainWindow", "HistoryWindow"]
+__all__ = ["ModernWindow", "HistoryWindow"]

@@ -1,283 +1,281 @@
 """
 AI Clip - 主输入窗口
+macOS 风格设计
 """
 
 import tkinter as tk
 import pyperclip
 import sys
+import ctypes
+from typing import Optional, Callable
 
-from config import (
-    Colors, FONTS,
-    MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT
-)
-from utils.helpers import get_window_center, ensure_window_on_screen
+from config import Colors, MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT
+from utils.helpers import get_window_near_mouse, ensure_window_on_screen
 from core.config_manager import get_config_manager
 
 
-class MainWindow(tk.Toplevel):
+class ModernWindow(tk.Toplevel):
     """
-    主输入窗口
-    - 快速输入文本
-    - Enter复制到剪贴板并关闭
-    - Esc关闭窗口
+    macOS 风格主输入窗口
     """
 
-    def __init__(self, master, on_history_click=None):
-        """
-        初始化主窗口
-
-        Args:
-            master: 父窗口（Tk根窗口）
-            on_history_click: 历史按钮点击回调
-        """
+    def __init__(self, master, on_history_click: Optional[Callable] = None):
         super().__init__(master)
 
         self.on_history_click = on_history_click
         self.visible = False
         self.config_manager = get_config_manager()
-        self.master = master
+        self.master = parent = master
+
+        # 动画状态
+        self._animating = False
 
         self._setup_window()
         self._create_widgets()
         self._bind_events()
 
-        # 初始隐藏窗口
         self.withdraw()
         self.visible = False
 
     def _setup_window(self):
         """设置窗口属性"""
-        # 尝试从配置加载位置，否则使用中心位置
-        default_x, default_y = get_window_center(MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT)
-        x, y = self.config_manager.get_window_position("main", default_x, default_y)
-        # 确保窗口在屏幕内
+        # 获取 DPI 缩放
+        try:
+            self._dpi_scale = self.winfo_fpixels('1i') / 96.0
+        except:
+            self._dpi_scale = 1.0
+
+        width = int(MAIN_WINDOW_WIDTH * self._dpi_scale)
+        height = int(MAIN_WINDOW_HEIGHT * self._dpi_scale)
+
+        x, y = get_window_near_mouse(MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT)
         x, y = ensure_window_on_screen(x, y, MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT)
 
-        # 设置窗口属性
-        self.geometry(f"{MAIN_WINDOW_WIDTH}x{MAIN_WINDOW_HEIGHT}+{x}+{y}")
-        self.overrideredirect(True)  # 无边框
-        self.attributes("-topmost", True)  # 置顶
+        self.geometry(f"{width}x{height}+{x}+{y}")
+        self.overrideredirect(True)
+        self.attributes("-topmost", True)
         self.configure(bg=Colors.BG)
+
+        if sys.platform == "win32":
+            self._apply_windows_effects()
+
         self.resizable(False, False)
 
-        # Windows下添加圆角和阴影效果
-        if sys.platform == "win32":
-            try:
-                self._round_window_corners(radius=12)
-                self.attributes("-alpha", 0.98)
-            except:
-                pass
-
-    def _round_window_corners(self, radius: int = 12):
-        """设置窗口圆角（Windows）"""
+    def _apply_windows_effects(self):
+        """应用 Windows 视觉效果"""
         try:
-            import ctypes
-            from ctypes import wintypes
+            hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
+            if hwnd == 0:
+                hwnd = int(self.frame(), 16)
 
+            # 圆角
             DWMWA_WINDOW_CORNER_PREFERENCE = 33
-            DWMWCP_ROUND = 2
-
-            hwnd = wintypes.HWND(int(self.frame(), 16))
-            preference = wintypes.DWORD(DWMWCP_ROUND)
+            preference = ctypes.c_int(2)  # DWMWCP_ROUND
             ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_WINDOW_CORNER_PREFERENCE,
-                ctypes.byref(preference),
-                ctypes.sizeof(preference)
+                hwnd, DWMWA_WINDOW_CORNER_PREFERENCE,
+                ctypes.byref(preference), ctypes.sizeof(preference)
             )
+
+            self.attributes("-alpha", 0.0)
         except:
             pass
 
     def _create_widgets(self):
-        """创建界面组件"""
+        """创建界面"""
         # 主容器
-        self.container = tk.Frame(
-            self,
-            bg=Colors.BG,
+        self.container = tk.Frame(self, bg=Colors.BG)
+        self.container.pack(fill=tk.BOTH, expand=True)
+
+        # 输入区域
+        self._create_input_area()
+
+        # 底部提示
+        self._create_hint_area()
+
+    def _create_input_area(self):
+        """创建输入区域"""
+        # 输入框容器
+        self.entry_frame = tk.Frame(
+            self.container,
+            bg=Colors.INPUT_BG,
             highlightthickness=1,
             highlightbackground=Colors.BORDER
         )
-        self.container.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
-
-        # 输入区域
-        self.input_frame = tk.Frame(self.container, bg=Colors.BG)
-        self.input_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=16)
-
-        # 输入框容器（包含输入框和历史按钮）
-        self.entry_container = tk.Frame(self.input_frame, bg=Colors.INPUT_BG)
-        self.entry_container.pack(fill=tk.BOTH, expand=True)
+        self.entry_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
 
         # 输入框
         self.entry_var = tk.StringVar()
         self.entry = tk.Entry(
-            self.entry_container,
+            self.entry_frame,
             textvariable=self.entry_var,
-            font=FONTS["input"],
+            font=("Microsoft YaHei UI", 13),
             bg=Colors.INPUT_BG,
             fg=Colors.INPUT_FG,
             insertbackground=Colors.ACCENT,
+            insertwidth=2,
             relief=tk.FLAT,
             borderwidth=0,
-            highlightthickness=0
+            highlightthickness=0,
+            selectbackground=Colors.ACCENT,
+            selectforeground="#ffffff"
         )
-        self.entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(16, 8), pady=12)
+        self.entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=14, pady=12)
 
         # 历史按钮
         self.history_btn = tk.Label(
-            self.entry_container,
-            text="📋",
-            font=("Segoe UI Emoji", 16),
+            self.entry_frame,
+            text="⏱",
+            font=("Segoe UI Symbol", 15),
             bg=Colors.INPUT_BG,
-            fg=Colors.FG,
+            fg=Colors.FG_SECONDARY,
             cursor="hand2"
         )
-        self.history_btn.pack(side=tk.RIGHT, padx=(0, 16))
+        self.history_btn.pack(side=tk.RIGHT, padx=(0, 12))
         self.history_btn.bind("<Button-1>", self._on_history_click)
         self.history_btn.bind("<Enter>", lambda e: self.history_btn.config(fg=Colors.ACCENT))
-        self.history_btn.bind("<Leave>", lambda e: self.history_btn.config(fg=Colors.FG))
+        self.history_btn.bind("<Leave>", lambda e: self.history_btn.config(fg=Colors.FG_SECONDARY))
 
-        # 提示文本
-        self.hint_label = tk.Label(
-            self.container,
-            text="按 Enter 复制并关闭",
-            font=FONTS["small"],
+        # 聚焦效果
+        self.entry.bind("<FocusIn>", self._on_focus_in)
+        self.entry.bind("<FocusOut>", self._on_focus_out)
+
+    def _create_hint_area(self):
+        """创建底部提示"""
+        self.hint_frame = tk.Frame(self.container, bg=Colors.BG)
+        self.hint_frame.pack(fill=tk.X, padx=12, pady=(0, 8))
+
+        # 左侧
+        tk.Label(
+            self.hint_frame,
+            text="Enter 复制  ·  Esc 关闭",
+            font=("Microsoft YaHei UI", 9),
             bg=Colors.BG,
-            fg=Colors.DISABLED
-        )
-        self.hint_label.pack(pady=(0, 8))
+            fg=Colors.FG_SECONDARY
+        ).pack(side=tk.LEFT)
+
+        # 右侧状态点
+        tk.Label(
+            self.hint_frame,
+            text="●",
+            font=("Arial", 8),
+            bg=Colors.BG,
+            fg=Colors.SUCCESS
+        ).pack(side=tk.RIGHT, padx=(0, 2))
+
+    def _on_focus_in(self, event=None):
+        """聚焦效果 - 蓝色边框"""
+        self.entry_frame.config(highlightbackground=Colors.ACCENT)
+
+    def _on_focus_out(self, event=None):
+        """失焦效果"""
+        self.entry_frame.config(highlightbackground=Colors.BORDER)
 
     def _bind_events(self):
         """绑定事件"""
-        # 输入框事件绑定
         self.entry.bind("<Return>", self._on_enter)
-        self.entry.bind("<Escape>", lambda e: self.hide())
         self.entry.bind("<KP_Enter>", self._on_enter)
-
-        # 窗口级别的事件绑定
-        self.bind("<Return>", self._on_enter)
+        self.entry.bind("<Escape>", lambda e: self.hide())
         self.bind("<Escape>", lambda e: self.hide())
-        self.bind("<KP_Enter>", self._on_enter)
 
     def _on_history_click(self, event=None):
-        """历史按钮点击事件"""
+        """历史按钮点击"""
         if self.on_history_click:
+            self.hide()
             self.on_history_click()
 
     def _on_enter(self, event=None):
-        """Enter键事件 - 复制并关闭"""
+        """Enter 复制并关闭"""
         content = self.entry_var.get().strip()
-
         if content:
             pyperclip.copy(content)
-            self.entry_var.set("")  # 清空输入框
-
+            self.entry_var.set("")
         self.hide()
-        return 'break'  # 阻止事件传播
+        return 'break'
 
-    def show(self):
+    def show(self, at_mouse: bool = True):
         """显示窗口"""
-        if not self.visible:
-            self.deiconify()
-            self.visible = True
-            # 确保窗口在最前面
-            self.lift()
-            self.attributes("-topmost", True)
-            # 聚焦输入框
-            self.after(10, self._focus_entry)
-            self.after(50, self._ensure_focus)
+        if self.visible:
+            return
 
-    def _ensure_focus(self):
-        """确保窗口和输入框获得焦点"""
-        self.focus_force()
-        self.entry.focus_force()
+        if at_mouse:
+            x, y = get_window_near_mouse(MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT)
+            self.geometry(f"+{x}+{y}")
+
+        self.deiconify()
+        self.visible = True
+        self.lift()
+        self.attributes("-topmost", True)
+
+        # 淡入动画
+        self._fade_in(0.0)
+
+    def _fade_in(self, alpha: float):
+        """淡入动画"""
+        if alpha >= 1.0:
+            self.attributes("-alpha", 1.0)
+            self.after(30, self._focus_entry)
+            return
+        self.attributes("-alpha", alpha)
+        self.after(15, lambda: self._fade_in(alpha + 0.12))
 
     def hide(self):
         """隐藏窗口"""
-        if self.visible:
-            self._save_position()
+        if not self.visible or self._animating:
+            return
+        self._save_position()
+        self._fade_out(1.0)
+
+    def _fade_out(self, alpha: float):
+        """淡出动画"""
+        if alpha <= 0.0:
+            self.attributes("-alpha", 0.0)
             self.withdraw()
             self.visible = False
+            return
+        self.attributes("-alpha", alpha)
+        self.after(12, lambda: self._fade_out(alpha - 0.15))
+
+    def _focus_entry(self):
+        """聚焦输入框"""
+        if self.visible:
+            self.entry.focus_set()
+            self.entry.select_range(0, tk.END)
+
+    def _save_position(self):
+        """保存位置"""
+        try:
+            x, y = self.winfo_x(), self.winfo_y()
+            self.config_manager.set_window_position("main", x, y)
+            self.config_manager.save()
+        except:
+            pass
 
     def toggle(self):
-        """切换显示/隐藏状态"""
+        """切换显示"""
         if self.visible:
             self.hide()
         else:
-            self.show()
-
-    def _focus_entry(self):
-        """聚焦输入框并全选文本"""
-        self.entry.focus_set()
-        self.entry.select_range(0, tk.END)
-
-    def _save_position(self):
-        """保存窗口位置到配置"""
-        try:
-            x = self.winfo_x()
-            y = self.winfo_y()
-            self.config_manager.set_window_position("main", x, y)
-            self.config_manager.save()
-        except Exception:
-            pass
+            self.show(at_mouse=True)
 
     def get_input_text(self) -> str:
-        """获取输入框文本"""
         return self.entry_var.get().strip()
 
     def set_input_text(self, text: str):
-        """设置输入框文本"""
         self.entry_var.set(text)
 
     def clear_input(self):
-        """清空输入框"""
         self.entry_var.set("")
 
 
-# 现代按钮类
-class ModernButton(tk.Label):
-    """现代风格按钮"""
-
-    def __init__(self, parent, text="", icon="", command=None, **kwargs):
-        default_kwargs = {
-            "bg": Colors.INPUT_BG,
-            "fg": Colors.FG,
-            "font": FONTS["default"],
-            "cursor": "hand2",
-            "pady": 8,
-            "padx": 16
-        }
-        default_kwargs.update(kwargs)
-
-        display_text = f"{icon} {text}" if icon and text else (icon or text)
-        super().__init__(parent, text=display_text, **default_kwargs)
-
-        self.command = command
-        self._original_bg = self.cget("bg")
-
-        self.bind("<Button-1>", self._on_click)
-        self.bind("<Enter>", self._on_enter_hover)
-        self.bind("<Leave>", self._on_leave)
-
-    def _on_click(self, event=None):
-        if self.command:
-            self.command()
-
-    def _on_enter_hover(self, event=None):
-        self.config(bg=Colors.HOVER)
-
-    def _on_leave(self, event=None):
-        self.config(bg=self._original_bg)
-
-
-# 测试代码
 if __name__ == "__main__":
+    if sys.platform == "win32":
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except:
+            pass
+
     root = tk.Tk()
     root.withdraw()
-
-    def on_history():
-        print("History button clicked")
-
-    app = MainWindow(root, on_history_click=on_history)
-    app.show()
-
+    app = ModernWindow(root, on_history_click=lambda: print("History"))
+    root.after(500, app.show)
     root.mainloop()
