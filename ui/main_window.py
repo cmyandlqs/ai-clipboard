@@ -1,6 +1,6 @@
 """
 AI Clip - 主输入窗口
-macOS 风格设计
+macOS 风格圆角设计 + 可拖动
 """
 
 import tkinter as tk
@@ -15,9 +15,7 @@ from core.config_manager import get_config_manager
 
 
 class ModernWindow(tk.Toplevel):
-    """
-    macOS 风格主输入窗口
-    """
+    """macOS 风格主输入窗口"""
 
     def __init__(self, master, on_history_click: Optional[Callable] = None):
         super().__init__(master)
@@ -25,10 +23,12 @@ class ModernWindow(tk.Toplevel):
         self.on_history_click = on_history_click
         self.visible = False
         self.config_manager = get_config_manager()
-        self.master = parent = master
-
-        # 动画状态
+        self.master = master
         self._animating = False
+
+        # 拖动状态
+        self._drag_start_x = 0
+        self._drag_start_y = 0
 
         self._setup_window()
         self._create_widgets()
@@ -39,7 +39,6 @@ class ModernWindow(tk.Toplevel):
 
     def _setup_window(self):
         """设置窗口属性"""
-        # 获取 DPI 缩放
         try:
             self._dpi_scale = self.winfo_fpixels('1i') / 96.0
         except:
@@ -57,34 +56,37 @@ class ModernWindow(tk.Toplevel):
         self.configure(bg=Colors.BG)
 
         if sys.platform == "win32":
-            self._apply_windows_effects()
+            self._apply_rounded_corners()
 
         self.resizable(False, False)
 
-    def _apply_windows_effects(self):
-        """应用 Windows 视觉效果"""
+    def _apply_rounded_corners(self):
+        """应用 Windows 圆角效果"""
         try:
             hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
             if hwnd == 0:
                 hwnd = int(self.frame(), 16)
 
-            # 圆角
+            # DWMWCP_ROUND = 2 (圆角), DWMWCP_ROUNDSMALL = 3 (小圆角)
             DWMWA_WINDOW_CORNER_PREFERENCE = 33
-            preference = ctypes.c_int(2)  # DWMWCP_ROUND
+            preference = ctypes.c_int(2)  # 圆角
             ctypes.windll.dwmapi.DwmSetWindowAttribute(
                 hwnd, DWMWA_WINDOW_CORNER_PREFERENCE,
                 ctypes.byref(preference), ctypes.sizeof(preference)
             )
 
             self.attributes("-alpha", 0.0)
-        except:
-            pass
+        except Exception as e:
+            print(f"[Window] 圆角设置: {e}")
 
     def _create_widgets(self):
-        """创建界面"""
-        # 主容器
-        self.container = tk.Frame(self, bg=Colors.BG)
+        """创建界面组件"""
+        # 主容器（可拖动）
+        self.container = tk.Frame(self, bg=Colors.BG, cursor="fleur")
         self.container.pack(fill=tk.BOTH, expand=True)
+
+        # 绑定拖动事件到容器
+        self._bind_drag(self.container)
 
         # 输入区域
         self._create_input_area()
@@ -94,14 +96,20 @@ class ModernWindow(tk.Toplevel):
 
     def _create_input_area(self):
         """创建输入区域"""
+        # 外层容器
+        input_wrapper = tk.Frame(self.container, bg=Colors.BG)
+        input_wrapper.pack(fill=tk.BOTH, expand=True, padx=12, pady=(12, 6))
+        self._bind_drag(input_wrapper)
+
         # 输入框容器
         self.entry_frame = tk.Frame(
-            self.container,
+            input_wrapper,
             bg=Colors.INPUT_BG,
             highlightthickness=1,
             highlightbackground=Colors.BORDER
         )
-        self.entry_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+        self.entry_frame.pack(fill=tk.BOTH, expand=True)
+        self._bind_drag(self.entry_frame)
 
         # 输入框
         self.entry_var = tk.StringVar()
@@ -117,7 +125,8 @@ class ModernWindow(tk.Toplevel):
             borderwidth=0,
             highlightthickness=0,
             selectbackground=Colors.ACCENT,
-            selectforeground="#ffffff"
+            selectforeground="#ffffff",
+            cursor="xterm"  # 输入框内显示文本光标
         )
         self.entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=14, pady=12)
 
@@ -125,7 +134,7 @@ class ModernWindow(tk.Toplevel):
         self.history_btn = tk.Label(
             self.entry_frame,
             text="⏱",
-            font=("Segoe UI Symbol", 15),
+            font=("Segoe UI Symbol", 16),
             bg=Colors.INPUT_BG,
             fg=Colors.FG_SECONDARY,
             cursor="hand2"
@@ -140,30 +149,53 @@ class ModernWindow(tk.Toplevel):
         self.entry.bind("<FocusOut>", self._on_focus_out)
 
     def _create_hint_area(self):
-        """创建底部提示"""
-        self.hint_frame = tk.Frame(self.container, bg=Colors.BG)
-        self.hint_frame.pack(fill=tk.X, padx=12, pady=(0, 8))
+        """创建底部提示区域"""
+        hint_frame = tk.Frame(self.container, bg=Colors.BG)
+        hint_frame.pack(fill=tk.X, padx=12, pady=(0, 10))
+        self._bind_drag(hint_frame)
 
-        # 左侧
-        tk.Label(
-            self.hint_frame,
+        # 左侧 - 作者署名
+        author_label = tk.Label(
+            hint_frame,
+            text="✦ Crafted by 最菜灰夫人",
+            font=("Microsoft YaHei UI", 8),
+            bg=Colors.BG,
+            fg=Colors.FG_SECONDARY,
+            cursor="fleur"
+        )
+        author_label.pack(side=tk.LEFT)
+        self._bind_drag(author_label)
+
+        # 右侧 - 快捷键提示
+        hint_label = tk.Label(
+            hint_frame,
             text="Enter 复制  ·  Esc 关闭",
-            font=("Microsoft YaHei UI", 9),
+            font=("Microsoft YaHei UI", 8),
             bg=Colors.BG,
-            fg=Colors.FG_SECONDARY
-        ).pack(side=tk.LEFT)
+            fg=Colors.FG_SECONDARY,
+            cursor="fleur"
+        )
+        hint_label.pack(side=tk.RIGHT)
+        self._bind_drag(hint_label)
 
-        # 右侧状态点
-        tk.Label(
-            self.hint_frame,
-            text="●",
-            font=("Arial", 8),
-            bg=Colors.BG,
-            fg=Colors.SUCCESS
-        ).pack(side=tk.RIGHT, padx=(0, 2))
+    def _bind_drag(self, widget):
+        """绑定拖动事件到组件"""
+        widget.bind("<Button-1>", self._start_drag)
+        widget.bind("<B1-Motion>", self._do_drag)
+
+    def _start_drag(self, event):
+        """开始拖动"""
+        self._drag_start_x = event.x
+        self._drag_start_y = event.y
+
+    def _do_drag(self, event):
+        """执行拖动"""
+        x = self.winfo_x() + (event.x - self._drag_start_x)
+        y = self.winfo_y() + (event.y - self._drag_start_y)
+        self.geometry(f"+{x}+{y}")
 
     def _on_focus_in(self, event=None):
-        """聚焦效果 - 蓝色边框"""
+        """聚焦效果"""
         self.entry_frame.config(highlightbackground=Colors.ACCENT)
 
     def _on_focus_out(self, event=None):
@@ -174,8 +206,13 @@ class ModernWindow(tk.Toplevel):
         """绑定事件"""
         self.entry.bind("<Return>", self._on_enter)
         self.entry.bind("<KP_Enter>", self._on_enter)
-        self.entry.bind("<Escape>", lambda e: self.hide())
-        self.bind("<Escape>", lambda e: self.hide())
+        self.entry.bind("<Escape>", self._on_escape)
+        self.bind("<Escape>", self._on_escape)
+
+    def _on_escape(self, event=None):
+        """Esc 关闭窗口"""
+        self.hide()
+        return 'break'
 
     def _on_history_click(self, event=None):
         """历史按钮点击"""
@@ -206,13 +243,16 @@ class ModernWindow(tk.Toplevel):
         self.lift()
         self.attributes("-topmost", True)
 
-        # 淡入动画
+        self._animating = True
         self._fade_in(0.0)
 
     def _fade_in(self, alpha: float):
         """淡入动画"""
+        if not self.visible:
+            return
         if alpha >= 1.0:
             self.attributes("-alpha", 1.0)
+            self._animating = False
             self.after(30, self._focus_entry)
             return
         self.attributes("-alpha", alpha)
@@ -220,26 +260,22 @@ class ModernWindow(tk.Toplevel):
 
     def hide(self):
         """隐藏窗口"""
-        if not self.visible or self._animating:
+        if not self.visible:
             return
+        self.visible = False
+        self._animating = False
+        self.attributes("-alpha", 0.0)
+        self.withdraw()
+        self.update()
         self._save_position()
-        self._fade_out(1.0)
-
-    def _fade_out(self, alpha: float):
-        """淡出动画"""
-        if alpha <= 0.0:
-            self.attributes("-alpha", 0.0)
-            self.withdraw()
-            self.visible = False
-            return
-        self.attributes("-alpha", alpha)
-        self.after(12, lambda: self._fade_out(alpha - 0.15))
 
     def _focus_entry(self):
         """聚焦输入框"""
         if self.visible:
-            self.entry.focus_set()
+            self.focus_force()
+            self.entry.focus_force()
             self.entry.select_range(0, tk.END)
+            self.entry.icursor(tk.END)
 
     def _save_position(self):
         """保存位置"""
